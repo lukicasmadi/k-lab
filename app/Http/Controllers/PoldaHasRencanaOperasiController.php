@@ -2,12 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Polda;
+use App\Models\DailyInput;
 use Illuminate\Support\Str;
 use App\Models\UserHasPolda;
 use Illuminate\Http\Request;
+use App\Models\PoldaSubmited;
 use App\Http\Requests\PHRORequest;
+use Illuminate\Support\Facades\DB;
+use App\Exports\PoldaSubmitedExport;
 use Illuminate\Support\Facades\File;
-use App\Models\PoldaHasRencanaOperasi;
+use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Storage;
 
 class PoldaHasRencanaOperasiController extends Controller
@@ -15,17 +20,29 @@ class PoldaHasRencanaOperasiController extends Controller
 
     public function data()
     {
-        $model = PoldaHasRencanaOperasi::with('rencanaOperasi');
+        $model = PoldaSubmited::perpolda()->with('polda');
+
+        // $model->when(authUser()->hasRole('access_daerah'), function ($q) {
+        //     return $q->where(DB::raw('DATE(created_at)'), now()->format("Y-m-d"));
+        // });
 
         return datatables()->eloquent($model)
-        ->addColumn('op_name', function (PoldaHasRencanaOperasi $phro) {
-            return $phro->rencanaOperasi->name;
-        })->toJson();
+        ->addColumn('polda_name', function (PoldaSubmited $ps) {
+            return $ps->polda->name;
+        })
+        ->addColumn('editable', function (PoldaSubmited $ps) {
+            if(indonesianStandart($ps->submited_date) == now()->format("d-m-Y")) {
+                return true;
+            } else {
+                return false;
+            }
+        })
+        ->toJson();
     }
 
     public function index()
     {
-        return view('phro.index');
+        return view('phro.index_polda');
     }
 
     public function create()
@@ -33,14 +50,16 @@ class PoldaHasRencanaOperasiController extends Controller
         $op = operationPlans();
 
         if(empty($op)) {
-            flash('There are currently no operations in progress')->error();
+            flash('Tidak ada operasi yang sedang berjalan')->error();
             return redirect()->route('phro_index');
         }
 
-        $check = UserHasPolda::where("user_id", myUserId())->first();
+        $poldaId = UserHasPolda::where("user_id", myUserId())->first()->polda_id;
 
-        if(empty($check)) {
-            flash('Your account has not been linked to any Polda data. Please contact the authorized officer')->error();
+        $todayInsert = PoldaSubmited::where("polda_id", $poldaId)->where("submited_date", date("Y-m-d"))->first();
+
+        if(!empty($todayInsert)) {
+            flash('Maaf, anda sudah menginput laporan hari ini! Silahkan gunakan menu edit')->error();
             return redirect()->route('phro_index');
         }
 
@@ -49,28 +68,87 @@ class PoldaHasRencanaOperasiController extends Controller
 
     public function store(PHRORequest $request)
     {
-        $data = [
-            'operation_name' => request('operation_name'),
-            'detail_operation' => request('detail_operation'),
-            'additional_info' => request('additional_info'),
-        ];
+        DB::beginTransaction();
 
-        if(request()->hasFile('attachement')) {
-            $file = $request->file('attachement');
-            $randomName = Str::random(20) . '.' . $file->getClientOriginalExtension();
-            Storage::put("/public/upload/phro/".$randomName, File::get($file));
-            $data['attachement'] = $randomName;
+        try {
+
+            $poldaSubmit = PoldaSubmited::create([
+                'uuid' => genUuid(),
+                'polda_id' => poldaId(),
+                'rencana_operasi_id' => operationPlans()->id,
+                'status' => "SUDAH MENGIRIMKAN LAPORAN",
+                'submited_date' => date("Y-m-d")
+            ]);
+
+            $payload = $request->except(['_token', 'submit']);
+            $payload["polda_submited_id"] = $poldaSubmit->id;
+            $payload["rencana_operasi_id"] = operationPlans()->id;
+
+            DailyInput::create($payload);
+
+            DB::commit();
+            flash('Seluruh data berhasil dikirim ke pusat')->success();
+
+            return redirect()->route('phro_index');
+        } catch (\Exception $e) {
+            DB::rollback();
+            logger($e);
+            flash('Data gagal dikirim. Silahkan dicoba kembali atau hubungi admin jika masih gagal')->error();
+            return redirect()->back();
         }
-
-        PoldaHasRencanaOperasi::create($data);
-
-        flash('Your data has been saved')->success();
-        return redirect()->route('phro_index');
     }
 
-    public function download($filePath)
+    public function edit($uuid)
     {
-        PoldaHasRencanaOperasi::where("attachement", $filePath)->firstOrFail();
-        return response()->download(storage_path("app/public/upload/phro/{$filePath}"));
+        $data = PoldaSubmited::with('dailyInput')->whereUuid($uuid)->firstOrFail();
+
+        return view('phro.edit', compact('data', 'uuid'));
+    }
+
+    public function update(PHRORequest $request, $uuid)
+    {
+        DB::beginTransaction();
+
+        try {
+
+            $payload = $request->except(['_token', 'submit', '_method']);
+
+            $poldaSubmited = PoldaSubmited::whereUuid($uuid)->firstOrFail();
+
+            DailyInput::where("polda_submited_id", $poldaSubmited->id)
+                ->where(DB::raw('DATE(created_at)'), $poldaSubmited->submited_date)
+                ->update($payload);
+
+            DB::commit();
+            flash('Seluruh data berhasil diupdate')->success();
+
+            return redirect()->route('phro_index');
+        } catch (\Exception $e) {
+            DB::rollback();
+            logger($e);
+            flash('Data gagal diupdate. Silahkan dicoba kembali atau hubungi admin jika masih gagal')->error();
+            return redirect()->back();
+        }
+    }
+
+    public function preview($uuid)
+    {
+        $data = PoldaSubmited::with('dailyInput')->whereUuid($uuid)->firstOrFail();
+        return view('phro.preview_load', compact('data'));
+    }
+
+    public function previewPhroDashboard($uuid)
+    {
+        $polda = Polda::whereUuid($uuid)->firstOrFail();
+        $data = PoldaSubmited::with('dailyInput')->where("polda_id", $polda->id)->firstOrFail();
+        return view('phro.preview_load', compact('data'));
+    }
+
+    public function download($uuid)
+    {
+        $polda = Polda::whereUuid($uuid)->firstOrFail();
+        $now = now()->format("Y-m-d");
+        $filename = 'daily-report-'.$polda->short_name.'-'.$now.'.xlsx';
+        return Excel::download(new PoldaSubmitedExport($uuid), $filename);
     }
 }

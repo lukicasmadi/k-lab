@@ -149,8 +149,9 @@
 
 .table>tbody>tr>td {
     color: #fff;
-    font-size: 15px;
+    font-size: 12px;
     letter-spacing: 1px;
+    /* background: #009688; */
 }
 
 .lds-ring {
@@ -211,7 +212,8 @@
 }
 
 .dtIconSize {
-    font-size: 24px;
+    font-size: 15px;
+    color: #fff;
 }
 
 .checkboxRole {
@@ -226,8 +228,8 @@
 }
 
 .page-item.active .page-link {
-    background-color: #009688;
-    margin-top: 3px;
+    background-color: #00adef;
+    /* margin-top: 3px; */
 }
 
 .page-item .page-link {
@@ -252,7 +254,6 @@
     border-left-color: transparent;
     border-radius: .25rem;
     padding-top: 17px;
-    font-weight: bold;
 }
 
 .far {
@@ -320,5 +321,35 @@ blockquote.blockquote {
     border-left-style: solid;
     border-left-width: 1px;
     border-left: 5px solid #009688;
-    font-weight: bold;
+}
+
+.loadingWhite {
+    color: white;
+}
+
+hr.dashed {
+    border-top: 2px dashed #999;
+}
+
+.red {
+    color: #d4525f;
+}
+
+.teal {
+    color: #44a55b;
+}
+
+.widget-chart-one .widget-heading .tabs a {
+    font-size: 14px;
+    letter-spacing: 1px;
+    font-weight: 600;
+    padding: 5px 7px;
+    background: transparent;
+    color: #0989bd;
+    border-radius: 4px;
+}
+
+.centered {
+    font-size: 16px;
+    text-align: center;
 }

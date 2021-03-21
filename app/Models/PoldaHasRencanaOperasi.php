@@ -5,12 +5,12 @@ namespace App\Models;
 use App\Models\Polda;
 use App\Models\RencanaOperasi;
 use Illuminate\Database\Eloquent\Model;
-use Spatie\Activitylog\Traits\LogsActivity;
+
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class PoldaHasRencanaOperasi extends Model
 {
-    use HasFactory, LogsActivity;
+    use HasFactory;
 
     protected $guarded = ['id'];
 
@@ -27,5 +27,12 @@ class PoldaHasRencanaOperasi extends Model
     public function rencanaOperasi()
     {
         return $this->belongsTo(RencanaOperasi::class);
+    }
+
+    public function scopePerpolda($query)
+    {
+        return $query->when(isPolda(), function ($q) {
+            return $q->where('polda_id', poldaId());
+        });
     }
 }
