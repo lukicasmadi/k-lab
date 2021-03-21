@@ -327,7 +327,7 @@ function donutDataFull() {
         fill: {
     type: "gradient",
     gradient: {
-      shadeIntensity: 1,
+      shadeIntensity: 0.1,
       opacityFrom: 0.9,
       opacityTo: 0.9,
       stops: [0, 90, 100]
